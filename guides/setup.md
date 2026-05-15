@@ -1,7 +1,7 @@
 # ContextPartner Setup Guide
 
 TIMESTAMP: 2026-05-14
-Status: First draft — based on Project G Live reference implementation
+Status: First draft — merged from Claude Code + claude.ai parallel work
 
 ---
 
@@ -19,53 +19,117 @@ The third component — the Project folder — was invisible for a long time bec
 
 ---
 
-## Component 1: The GitHub Repo
+## What You Need
 
-Create a new GitHub repository for the project. It should be:
-
-- **Private or public** — your choice; the OS works either way
-- **Initialized with a README** — you need at least one file to clone
-- **Accessible via GitHub connector** — the claude.ai GitHub connector must have read/write access
-
-The repo needs two directories at minimum:
-
-```
-/sessions/     -- session snapshots go here
-/              -- AGENT.md lives at the root
-```
-
-Everything else (extraction docs, templates, guides, app code) is project-specific.
+- A GitHub account
+- Claude Desktop (for the claude.ai interface)
+- Claude Code (for local execution, if using the dual-AI workflow)
+- A GitHub Personal Access Token (PAT) with repo read/write permissions
+- Node.js installed (for NPX mode MCP)
 
 ---
 
-## Component 2: AGENT.md
+## Step 1 — Create the Project Repo
 
-AGENT.md is the state document. It lives at the root of the repo. It is the single source of truth for everything the AI needs to know: the session memory system, the posture system, the signal vocabulary, the project state, the decisions made, what not to do.
+Create a new GitHub repository for your project. Public or private, your choice. Initialize with a README so the repo has a default branch.
 
-**Create AGENT.md before your first real working session.** The system prompt tells the AI to read AGENT.md at boot. If the file doesn't exist, the boot fails. Session zero is setup-only: create the repo, write AGENT.md, then begin working sessions.
+The repo needs two things at minimum:
 
-Use the template at `/templates/AGENT.md` in this repo (once built). For now, use Project G Live's AGENT.md as the reference — strip out all genealogy-specific content and replace with your project's state.
+```
+AGENT.md           -- at the root
+/sessions/         -- for session snapshots
+```
 
-AGENT.md should be versioned: `vMAJOR.MINOR.PATCH` in the header. Bump the version whenever you make a substantive update. The system prompt asks the AI to "confirm the version" — this is how you know the right file was read.
+Everything else (app code, docs, templates) is project-specific.
 
 ---
 
-## Component 3: The claude.ai Project Folder and System Prompt
+## Step 2 — Set Up the GitHub MCP Connector
 
-### What a claude.ai Project Folder Is
+The GitHub MCP connector gives claude.ai read/write access to your repo. This is the mechanism by which the OS reads and writes state. Without it, claude.ai can only access cached web versions of your files — not reliable enough for back-to-back sessions.
 
-In claude.ai, you can create Project folders that contain a persistent system prompt. Every new conversation opened inside that Project automatically receives the system prompt before the conversation begins. This is the boot sequence.
+### NPX Mode (recommended)
 
-### Why This Matters
+NPX mode runs the GitHub MCP server via Node.js without Docker. First run downloads a small package; subsequent runs use the cache. No container sleep issues.
 
-Without a Project folder, every session starts with a blank AI. You would have to manually paste a restoration prompt at the start of every conversation. The Project folder automates this — the OS boots automatically every time you open a new conversation.
+**Claude Desktop config** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-pat-here"
+      }
+    }
+  }
+}
+```
 
-### How to Create the Project Folder
+**Claude Code config** (`~/.claude/settings.json`):
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-pat-here"
+      }
+    }
+  }
+}
+```
+
+After editing config files: quit and reopen Claude Desktop for changes to take effect.
+
+### PAT Storage
+
+Store a backup of your config with the PAT somewhere safe. Project G Live uses `claude_desktop_config.BACKUP.json` in the same folder. Do not delete it — it is the PAT source of truth if you need to reconfigure.
+
+### MCP is User-Level, Not Project-Level
+
+Do not put MCP config inside your project repo. One MCP setup serves all your projects from the same machine. This keeps project repos clean and portable.
+
+---
+
+## Step 3 — Create AGENT.md
+
+Copy `/templates/AGENT.md` from this repo into your project repo root. Fill in the project name and initial state. Leave the OS sections (posture system, signal vocabulary, session memory architecture, session close protocol) unchanged. Add project-specific sections below.
+
+Commit it. AGENT.md is now the single source of truth for your project.
+
+**Create AGENT.md before your first working session.** The boot sequence tells the AI to read AGENT.md. If the file doesn't exist, the boot fails. Session zero is setup-only; the OS is live from session one onward.
+
+AGENT.md should be versioned: `vMAJOR.MINOR.PATCH` in the header. Bump on every substantive update. The boot sequence confirms the version at session start — this is how you know the right file was read.
+
+---
+
+## Step 4 — Create the /sessions/ Folder
+
+Create a `/sessions/` folder in your project repo. Add a `SESSIONS-INDEX.md` file with a header line:
+
+```markdown
+# Sessions Index
+
+Format: TIMESTAMP | Posture | AI | one-sentence summary
+```
+
+Commit it. The session archive starts here.
+
+---
+
+## Step 5 — Create the claude.ai Project Folder
+
+This is the boot sequence. Every session you open inside the Project folder automatically receives the system prompt before the conversation begins. The OS boots without any manual input required.
+
+### How to Create It
 
 1. In claude.ai, click **Projects** in the left sidebar
 2. Click **New Project**
 3. Name it to match your project (e.g., "Project G Live", "ContextPartner")
-4. Open **Project Instructions** and paste the system prompt (see below)
+4. Open **Project Instructions** and paste the system prompt below
 5. Connect the GitHub connector to the project if not already connected
 6. All future working sessions on this project should be opened from inside this Project folder
 
@@ -82,9 +146,7 @@ This is [PROJECT-NAME] (github: [USERNAME]/[REPO-NAME]). At session start, use t
 - `[USERNAME]` — your GitHub username (e.g., "davewilbur78")
 - `[REPO-NAME]` — the repository name (e.g., "Project-G-Live")
 
-**That is the only customization required.** Do not change anything else on the first deployment.
-
----
+That is the only customization required. Do not change anything else on the first deployment.
 
 ### What Must Never Be Changed or Weakened
 
@@ -110,52 +172,50 @@ This line creates a hard stop at the one moment when the whole boot sequence dep
 
 ### What Can Be Extended
 
-Once the core system prompt is working, you can extend it for project-specific boot steps. Add them before the posture question, after the AGENT.md read:
+Once the core system prompt is working, you can add project-specific boot steps. Add them before the posture question, after the session snapshot fetch:
 
 ```
-This is [PROJECT-NAME] (github: [USERNAME]/[REPO-NAME]). At session start, use the GitHub connector to read AGENT.md, confirm the version, fetch the most recent session snapshot from /sessions/. [Add any project-specific checks here -- e.g., "Check the Supabase connection status in AGENT.md."] Then ask for posture: BUILD, FIX, or EXPLORE. Do not begin work until posture is confirmed. If the GitHub connector is unavailable or you cannot read AGENT.md, stop and tell me before proceeding. The repo is the source of truth -- never rely on memory from previous conversations.
+This is [PROJECT-NAME] (github: [USERNAME]/[REPO-NAME]). At session start, use the GitHub connector to read AGENT.md, confirm the version, fetch the most recent session snapshot from /sessions/. [Add project-specific checks here — e.g., "Check the Supabase connection status in AGENT.md."] Then ask for posture: BUILD, FIX, or EXPLORE. Do not begin work until posture is confirmed. If the GitHub connector is unavailable or you cannot read AGENT.md, stop and tell me before proceeding. The repo is the source of truth -- never rely on memory from previous conversations.
 ```
 
 Do not add complexity until the base system is running cleanly.
 
----
-
 ### A Note on System Prompt and AGENT.md Coupling
 
-The system prompt hardcodes the posture vocabulary: BUILD, FIX, EXPLORE. These terms come from AGENT.md. If you later change the posture system in AGENT.md (add modes, rename them), you must also update the system prompt to match. They will drift silently if you don't. Make it a habit: any time you change the posture vocabulary in AGENT.md, check the system prompt.
+The system prompt hardcodes the posture vocabulary: BUILD, FIX, EXPLORE. These terms come from AGENT.md. If you later change the posture system in AGENT.md (add modes, rename them), you must also update the system prompt to match. They will drift silently if you don't.
+
+---
+
+## Step 6 — Clone Locally for Claude Code
+
+If your project uses Claude Code (for local execution, git commits, running scripts), clone the repo to a fixed local path:
+
+```
+git clone https://github.com/[USERNAME]/[REPO-NAME] /Users/[you]/[project-name]/
+```
+
+Use this exact path every Claude Code session. Never clone again — always work from this directory. Always `git pull` before starting local work after any connector push from claude.ai.
 
 ---
 
 ## The Claude Code Boot Path (Separate from This)
 
-The three-part setup above is the **claude.ai boot path**. Claude Code is a separate AI interface and boots differently.
+The steps above describe the **claude.ai boot path**. Claude Code is a separate interface and boots differently.
 
 Claude Code does not use the claude.ai Project folder or system prompt. It uses:
 - A `CLAUDE.md` file at the repo root (if present) — Claude Code reads this automatically at session start
-- Or a project brief (like `CLAUDE-CODE-BRIEF.md`) that you point Claude Code to explicitly
+- Or a project brief (like `CLAUDE-CODE-BRIEF.md`) that you point Claude Code to explicitly at session start
 
-For dual-AI projects (claude.ai handles architecture/design, Claude Code handles execution), both boot paths must be set up. See `/guides/dual-ai-workflow.md` for the full dual-AI setup (to be written).
-
----
-
-## Session Zero: Before Your First Working Session
-
-When setting up a new project, do these steps before opening your first real working session inside the Project folder:
-
-1. Create the GitHub repo
-2. Clone it locally (if Claude Code is in the workflow)
-3. Write AGENT.md — at minimum: posture system, session memory system, session close protocol, project description, and current state
-4. Commit AGENT.md to the repo
-5. Create the claude.ai Project folder
-6. Paste the system prompt with your repo substituted in
-7. Open a test conversation inside the Project folder and verify the boot sequence fires correctly: AI reads AGENT.md, confirms version, checks /sessions/ (empty is fine), asks for posture
-
-If the test session boots correctly, the OS is live. Begin working sessions.
+For dual-AI projects, both boot paths must be set up. See `/guides/dual-ai-workflow.md` for the full dual-AI setup (to be written).
 
 ---
 
-## Maintenance Notes
+## Known Issues
 
-- **SESSIONS-INDEX.md**: Once you have more than a handful of sessions, create a `SESSIONS-INDEX.md` in `/sessions/` and update it at each session close. The AI fetches the most recent snapshot — an index makes that lookup reliable when the folder is large.
-- **Connector health**: The GitHub connector occasionally times out or loses authorization. If a session starts and the AI cannot read AGENT.md, check the connector status in claude.ai settings before assuming the repo has a problem.
-- **AGENT.md version**: The system prompt asks the AI to "confirm the version." If you see the wrong version number at session start, the connector served a cached read. Restart the connector or open a new conversation and try again.
+**Stale cache on connector reads:** The GitHub connector caches reads. If claude.ai reads a file immediately after Claude Code commits it, claude.ai may see the prior version. Build in a short pause or verify the SHA. See the SHA sync issue section in `/extraction/project-g-live-os-inventory.md` and the future `/guides/dual-ai-workflow.md` for the full protocol.
+
+**Connector goes to sleep:** If using Docker mode, the container may sleep between sessions and break the connector. NPX mode avoids this entirely. If the connector is unresponsive at session start, the hard stop in the system prompt will catch it.
+
+**Wrong AGENT.md version at session start:** If the version reported at boot doesn't match what you last committed, the connector served a cached read. Restart the connector or open a new conversation and try again.
+
+**Wrong directory in Claude Code:** Always confirm you are in the right project directory before running anything. A wrong working directory is the cause of most "code isn't there" issues.
